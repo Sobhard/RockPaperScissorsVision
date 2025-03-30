@@ -1,5 +1,13 @@
 import cv2
 import numpy as np
+from flask import Flask, jsonify, redirect
+import threading
+
+app = Flask(__name__)
+
+# Global variables to store detection results
+player_gesture = None
+counter_gesture = None
 
 model_cfg = "custom-yolov4-tiny-detector.cfg"  # Path to your YOLOv4-tiny cfg file
 model_weights = "custom-yolov4-tiny-detector_last (5).weights"  # Path to your YOLOv4-tiny weights file
@@ -10,58 +18,92 @@ net = cv2.dnn.readNet(model_weights, model_cfg)
 layer_names = net.getLayerNames()
 output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
 
-# Open webcam using a specific backend
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # For Windows with DirectShow
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
+# Try initializing the webcam with different backends
+cap = None
+for backend in [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_V4L2]:
+    cap = cv2.VideoCapture(0, backend)
+    if cap.isOpened():
+        print(f"Webcam initialized with backend: {backend}")
         break
+else:
+    raise RuntimeError("Failed to initialize webcam. Check your camera or drivers.")
 
-    # Process the frame for YOLO
-    blob = cv2.dnn.blobFromImage(frame, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
-    net.setInput(blob)
-    outputs = net.forward(output_layers)
+gesture_map = {0: "Rock", 1: "Paper", 2: "Scissors"}
 
-    # Post-process the results (detection)
-    boxes, confidences, class_ids = [], [], []
-    height, width = frame.shape[:2]
+# Function to detect gestures
+def detect_gesture():
+    global player_gesture, counter_gesture
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Failed to capture frame from webcam.")
+            continue
 
-    for out in outputs:
-        for detection in out:
-            scores = detection[5:]
-            class_id = np.argmax(scores)
-            confidence = scores[class_id]
+        # Process the frame for YOLO
+        blob = cv2.dnn.blobFromImage(frame, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
+        net.setInput(blob)
+        outputs = net.forward(output_layers)
 
-            if confidence > 0.4:  # Confidence thresh4old for detections
-                center_x = int(detection[0] * width)
-                center_y = int(detection[1] * height)
-                w = int(detection[2] * width)
-                h = int(detection[3] * height)
+        # Post-process the results (detection)
+        boxes, confidences, class_ids = [], [], []
+        height, width = frame.shape[:2]
 
-                # Append bounding box details
-                boxes.append([center_x, center_y, w, h])
-                confidences.append(float(confidence))
-                class_ids.append(class_id)
+        for out in outputs:
+            for detection in out:
+                scores = detection[5:]
+                class_id = np.argmax(scores)
+                confidence = scores[class_id]
 
-    # Non-Maximum Suppression to eliminate redundant boxes
-    indexes = cv2.dnn.NMSBoxes(boxes, confidences, score_threshold=0.5, nms_threshold=0.4)
+                if confidence > 0.4:  # Confidence threshold for detections
+                    center_x = int(detection[0] * width)
+                    center_y = int(detection[1] * height)
+                    w = int(detection[2] * width)
+                    h = int(detection[3] * height)
 
-    # Draw bounding boxes and labels
-    for i in range(len(boxes)):
-        if i in indexes:
-            x, y, w, h = boxes[i]
-            label = str(class_ids[i])
-            cv2.rectangle(frame, (x - (w//2), y - (h//2)), (x + (w//2), y + (h//2)), (0, 255, 0), 2)
-            cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    # Append bounding box details
+                    boxes.append([center_x, center_y, w, h])
+                    confidences.append(float(confidence))
+                    class_ids.append(class_id)
 
-    # Show the frame
-    cv2.imshow("Frame", frame)
+        # Non-Maximum Suppression to eliminate redundant boxes
+        indexes = cv2.dnn.NMSBoxes(boxes, confidences, score_threshold=0.5, nms_threshold=0.4)
 
-    # Exit on pressing 'q'
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        # Update gestures
+        if len(class_ids) == 1:
+            player_gesture = gesture_map[class_ids[0]]
+            counter_gesture = "Scissors"
+            if player_gesture == "Rock":
+                counter_gesture = "Paper"
+            elif player_gesture == "Paper":
+                counter_gesture = "Scissors"
+            elif player_gesture == "Scissors":
+                counter_gesture = "Rock"
 
-# Release resources
-cap.release()
-cv2.destroyAllWindows()
+        # Exit on pressing 'q'
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # Release resources
+    cap.release()
+    cv2.destroyAllWindows()
+
+# Flask route to provide detection results
+@app.route('/detect', methods=['GET'])
+def detect():
+    global player_gesture, counter_gesture
+    if player_gesture is None or counter_gesture is None:
+        return jsonify({"error": "No gesture detected yet."})
+    return jsonify({"player_gesture": player_gesture, "counter_gesture": counter_gesture})
+
+# Add a root route to avoid 404 errors
+@app.route('/')
+def index():
+    return "Rock Paper Scissors Backend is running."
+
+if __name__ == "__main__":
+    # Start gesture detection in a separate thread
+    detection_thread = threading.Thread(target=detect_gesture)
+    detection_thread.start()
+
+    # Run the Flask app
+    app.run(host="0.0.0.0", port=5000)
