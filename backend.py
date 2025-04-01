@@ -16,6 +16,12 @@ def detect_gesture():
         print("Received request for gesture detection.")
         prediction, _, _ = classifier.predictFromCamera_Timeout(1)
         player_gesture = GESTURES[prediction.argmax()]
+        if (player_gesture == 'Rock'):
+            counter_gesture = 'Paper'
+        elif (player_gesture == 'Paper'):
+            counter_gesture = 'Scissors'
+        elif (player_gesture == 'Scissors'):
+            counter_gesture = 'Rock'
         counter_gesture = random.choice(GESTURES)
 
         print(f"Player Gesture: {player_gesture}, Counter Gesture: {counter_gesture}")
