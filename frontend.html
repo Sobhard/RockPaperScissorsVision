@@ -28,7 +28,7 @@
     <script>
         async function playGame() {
             try {
-                const response = await fetch('http://<BACKEND_IP>:5000/detect'); // Replace <BACKEND_IP> with the actual IP
+                const response = await fetch('http://127.0.0.1:5000/detect'); // Ensure this matches the backend
                 const data = await response.json();
 
                 if (data.error) {
