@@ -8,7 +8,7 @@ CORS(app)  # Enable CORS for all routes
 
 classifier = RPSClassification()
 
-GESTURES = ['Rock', 'Paper', 'Scissors']
+GESTURES = ['Paper', 'Rock', 'Scissors']
 
 @app.route('/detect', methods=['GET'])
 def detect_gesture():
