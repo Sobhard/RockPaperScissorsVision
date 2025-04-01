@@ -28,11 +28,19 @@
     <script>
         async function playGame() {
             try {
-                const response = await fetch('http://127.0.0.1:5000/detect'); // Ensure this matches the backend
+                console.log("Sending request to backend..."); // Debugging log
+                const response = await fetch('http://127.0.0.1:5000/detect');
+                console.log("Received response from backend:", response); // Debugging log
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
                 const data = await response.json();
+                console.log("Parsed JSON data:", data); // Debugging log
 
                 if (data.error) {
-                    document.getElementById('outcome').innerText = data.error;
+                    document.getElementById('outcome').innerText = `Error: ${data.error}`;
                     return;
                 }
 
@@ -56,7 +64,8 @@
                 }
                 document.getElementById('outcome').innerText = outcome;
             } catch (error) {
-                document.getElementById('outcome').innerText = 'Error connecting to backend.';
+                console.error("Error connecting to backend:", error); // Debugging log
+                document.getElementById('outcome').innerText = `Error: ${error.message}`;
             }
         }
 
